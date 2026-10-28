@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>UART双缓冲区驱动库的使用方法</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/dracula.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+    <script>document.addEventListener('DOMContentLoaded', ()=>hljs.highlightAll())</script>
+    <style>
+        body {
+            margin: 0;
+            /*background: url("../../Picture/ARIA3.png") no-repeat center center fixed;*/
+            background: url("https://cdn.jsdelivr.net/gh/SakuraLight2026/Aria@main/ARIA3.png") no-repeat center center fixed;
+            background-size: cover;
+        }
+
+        h1 {
+            text-align: center;      /* 文字水平居中 */
+            font-size: 2.8em;        /* 加大字体 */
+            color: #fff;             /* 白色字体，在背景图上更清晰 */
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.7); /* 加个阴影，防止和背景融在一起 */
+            margin-top: 15px;        /* 离顶部远一点，看着更舒服 */
+            font-family: 'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', serif;
+        }
+
+        p {
+            text-indent: 2em;      /* 首行缩进2字符 */
+            font-size: 1.8em;      /* 加大字体 */
+            color: #fff;           /* 浅灰字体，不刺眼 */
+            line-height: 1.8;      /* 行高，阅读更舒服 */
+            margin-top: 15px;      /* 段落间距 */
+            text-align: left;      /* 取消继承的居中，左对齐才自然 */
+            font-family: 'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', serif;
+        }
+
+
+        .code-area { margin: 25px 0; }
+
+        .copy-btn {
+            float: right;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #eee;
+            padding: 6px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+        .copy-btn:hover { background: rgba(255,255,255,0.3); }
+
+        .code-box {
+            clear: both;
+            background: rgba(22,22,37,0.95);
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            font-family: Consolas, Monaco, monospace !important; /* 强制等宽，绝对整齐 */
+            font-size: 0.95em;
+            line-height: 1.5;
+            tab-size: 4; /* 统一4空格缩进 */
+            white-space: pre; /* 保留原格式，不自动换行 */
+            color: #d4d4d4;
+        }
+    </style>
+</head>
+<body>
+    <div style="
+        background-color: rgba(0, 0, 0, 0.65);
+        padding: 50px 80px;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        max-width: 1250px;
+        margin: 80px auto;
+    ">
+
+        <h1>UART双缓冲区驱动库的使用方法</h1>
+
+        <h2 style="text-align: center; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.7); font-family: 'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', serif;">贡献者： 广州大学庆园阁战队 陈光钊</h2>
+
+        <h2 style="text-align: center; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.7); font-family: 'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', serif;">活跃赛季： 2026赛季、2027赛季</h2>
+
+        <h2 style="color: white; font-size: 2.2em; text-shadow: 2px 2px 4px rgba(0,0,0,0.7); font-family: 'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', serif;">摘要</h2>
+
+        <p>之前在写旧哨兵（2026赛季哨兵机器人）裁判系统的接收和解包代码的时候，我就很是一筹莫展。不过后来中科大的麻神的双缓冲教程和粘包处理逻辑让我如听仙乐耳暂明。</p>
+
+        <p>但是在写代码&移植麻神的代码的时候，我也发现了一些问题——麻神的代码也仅限于喵板，一旦到了其它的板子的时候就不太行了（要改掉一些东西就比较麻烦）。为了有利于传承，我决定基于中科大麻神的双缓冲区代码写一个更具有普适性的UART双缓冲区代码给大家用，而且还是即刻移植写几行代码马上能用的那种！</p>
+
+        <p>如果有什么使用上的问题后续都可以和我交流。联系方式文章最后有哦~~~~~</p>
+
+        <h2 style="color: white; font-size: 2.2em; text-shadow: 2px 2px 4px rgba(0,0,0,0.7); font-family: 'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', serif;">1.使用方法</h2>
+
+        <p>“UART_Double_Buffer/Inc/drv_uart_double_buffer.h”有一个结构体和两个函数，具体如下:</p>
+
+        <p>首先是结构体：</p>
+        <div class="code-area">
+            <button class="copy-btn" onclick="copyCode(this)">📋 复制代码</button>
+            <div class="code-box">
+typedef struct {
+    UART_HandleTypeDef *UART_Handler;
+    UART_Callback Callback_Function;
+
+    uint8_t Rx_Buffer_A[UART_BUFFER_SIZE];
+    uint8_t Rx_Buffer_B[UART_BUFFER_SIZE];
+
+    uint8_t *Rx_Buffer_Active;
+    uint8_t *Rx_Buffer_Already;
+
+    // 接收时间戳
+    uint64_t Rx_Time_Stamp;
+}Drv_UART_Manage_Object;
+            </div>
+        </div>
+
+        <p>然后是初始化函数，其定义如下：</p>
+        <div class="code-area">
+            <button class="copy-btn" onclick="copyCode(this)">📋 复制代码</button>
+            <div class="code-box">
+DRV_UART_Manage_StatusTypedef UART_Init(Drv_UART_Manage_Object *UART_Manage_Object, UART_HandleTypeDef *huart, UART_Callback Callback_Function) {
+    if (UART_Manage_Object != NULL) {
+        UART_Manage_Object->UART_Handler = huart;
+        UART_Manage_Object->Callback_Function = Callback_Function;
+
+        UART_Manage_Object->Rx_Buffer_Active = UART_Manage_Object->Rx_Buffer_A;
+        HAL_UARTEx_ReceiveToIdle_DMA(UART_Manage_Object->UART_Handler, UART_Manage_Object->Rx_Buffer_Active, UART_BUFFER_SIZE);
+        return DRV_UART_OK;
+    }else {
+        return DRV_UART_ERR;
+    }
+}
+            </div>
+        </div>
+
+        <p>还有重初始化函数，其定义如下：</p>
+        <div class="code-area">
+            <button class="copy-btn" onclick="copyCode(this)">📋 复制代码</button>
+            <div class="code-box">
+DRV_UART_Manage_StatusTypedef UART_Reinit(Drv_UART_Manage_Object *UART_Manage_Object, UART_HandleTypeDef *huart)
+{
+    if (UART_Manage_Object != NULL) {
+        UART_Manage_Object->UART_Handler = huart;
+        UART_Manage_Object->Rx_Buffer_Active = UART_Manage_Object->Rx_Buffer_A;
+        HAL_UARTEx_ReceiveToIdle_DMA(UART_Manage_Object->UART_Handler, UART_Manage_Object->Rx_Buffer_Active, UART_BUFFER_SIZE);
+        return DRV_UART_OK;
+    } else {
+        return DRV_UART_ERR;
+    }
+}
+            </div>
+        </div>
+
+        <p>需要注意的是，头文件开头有一行代码如下：</p>
+        <div class="code-area">
+            <button class="copy-btn" onclick="copyCode(this)">📋 复制代码</button>
+            <div class="code-box">
+/**
+ * @brief UART通信接收回调函数数据类型
+ */
+typedef void (*UART_Callback)(uint8_t *Buffer, uint16_t Length);
+            </div>
+        </div>
+
+        <P>这个就如我的注释所示，后面使用的时候用来注册回调函数用的。</P>
+
+        <P>注意包含头文件这种事情应该不需要我讲了。</P>
+
+        <P>怎么使用呢？首先（以我达妙开发板的UART10为例，下文亦然），找一个地方写下：</P>
+        <div class="code-area">
+            <button class="copy-btn" onclick="copyCode(this)">📋 复制代码</button>
+            <div class="code-box">
+Drv_UART_Manage_Object   UART10_Manage_Object;
+            </div>
+        </div>
+
+        <P>注意还要注册一个回调函数：</P>
+        <div class="code-area">
+            <button class="copy-btn" onclick="copyCode(this)">📋 复制代码</button>
+            <div class="code-box">
+void HIPNUC_UART_Callback_Function(uint8_t *Buffer, uint16_t Length) {
+    /* your callback function code */
+}
+            </div>
+        </div>
+
+        <P>然后初始化：</P>
+        <div class="code-area">
+            <button class="copy-btn" onclick="copyCode(this)">📋 复制代码</button>
+            <div class="code-box">
+UART_Init(&UART10_Manage_Object, &huart10, HIPNUC_UART_Callback_Function);
+            </div>
+        </div>
+
+        <P>完事后就去你自己的串口回调函数上写如下代码（这里以DMA空闲接收中断为例）：</P>
+        <div class="code-area">
+            <button class="copy-btn" onclick="copyCode(this)">📋 复制代码</button>
+            <div class="code-box">
+UART10_Manage_Object.Rx_Buffer_Already = UART10_Manage_Object.Rx_Buffer_Active;
+if (UART10_Manage_Object.Rx_Buffer_Active == UART10_Manage_Object.Rx_Buffer_A) {
+    UART10_Manage_Object.Rx_Buffer_Active = UART10_Manage_Object.Rx_Buffer_B;
+}else {
+    UART10_Manage_Object.Rx_Buffer_Active = UART10_Manage_Object.Rx_Buffer_A;
+}
+
+HAL_UARTEx_ReceiveToIdle_DMA(&huart10, UART10_Manage_Object.Rx_Buffer_Active, UART_BUFFER_SIZE);
+// 上面这个根据你自己的串口接收方式看着来改
+__HAL_DMA_DISABLE_IT(&hdma_usart10_rx, DMA_IT_HT); // Disable Half Transfer interrupt for DMA
+// 这玩意我在DMA空闲中断用的，就是关掉DMA接收过半中断
+
+if (UART10_Manage_Object.Callback_Function != nullptr) {
+    UART10_Manage_Object.Callback_Function(UART10_Manage_Object.Rx_Buffer_Already, Size);
+}
+            </div>
+        </div>
+
+        <p>好了，现在基本上就可以用了。剩下的细枝末节问题可以通过Debug解决。</p>
+
+        <h2 style="color: white; font-size: 2.2em; text-shadow: 2px 2px 4px rgba(0,0,0,0.7); font-family: 'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', serif;">2.注意事项</h2>
+
+        <p>有一个需要注意的点就是达妙开发板的DMA访问的内存区域有规定的，比如DTCM这个地方喵板的DMA就访问不了，所以保险起见可以在你定义的结构体变量前加上点东西，具体可以参考我之前写的《一些针对达妙开发板的DMA发送不了的解（歪）决（门）办（邪）法（道）》来改，强行把你的结构体变量地址改到DMA可以访问的地址。</p>
+
+        <h3 style="color: white; font-size: 2.0em; text-shadow: 2px 2px 4px rgba(0,0,0,0.7); font-family: 'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', serif;">联系方式</h3>
+        <h4 style="color: gray;  font-size: 1.8em; text-shadow: 2px 2px 4px rgba(0,0,0,0.7); font-family: 'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', serif;">cgz31415925352021@163.com</h4>
+
+        <!-- ========== 参考资料视频区 ========== -->
+        <h4 style="color: white; font-size: 1.8em; margin-top: 30px; margin-bottom: 15px; text-shadow: 2px 2px 4px rgba(0,0,0,0.7); font-family: 'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', serif;">
+            📺 参考资料·视频
+        </h4>
+
+        <!-- 视频1：中科大麻神 双缓冲与粘包 -->
+        <div style="margin: 20px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            <div style="background: rgba(30,30,46,0.95); padding: 8px 16px; display: flex; align-items: center; gap: 8px; font-size: 0.9em; color: #ccc;">
+                <span style="color: #fb7299;">▶</span>
+                <span>中科大RM电控合集 · 双缓冲接收与粘包处理（麻神）</span>
+            </div>
+            <iframe
+                    src="//player.bilibili.com/player.html?isOutside=true&bvid=BV1NNURBEE3q&page=1&high_quality=1&danmaku=0"
+                    scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"
+                    style="width: 100%; height: 450px; display: block;">
+            </iframe>
+        </div>
+
+        <!-- 视频2：keysking STM32 串口DMA -->
+        <div style="margin: 20px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            <div style="background: rgba(30,30,46,0.95); padding: 8px 16px; display: flex; align-items: center; gap: 8px; font-size: 0.9em; color: #ccc;">
+                <span style="color: #fb7299;">▶</span>
+                <span>keysking · STM32串口DMA模式与收发不定长数据</span>
+            </div>
+            <iframe
+                    src="//player.bilibili.com/player.html?isOutside=true&bvid=BV1do4y1F7wt&page=1&high_quality=1&danmaku=0"
+                    scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"
+                    style="width: 100%; height: 450px; display: block;">
+            </iframe>
+        </div>
+
+        <p style="color: #aaa; font-size: 0.9em; margin-top: 10px; text-align: right; font-family: 'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', serif;">
+            💡 视频来自B站，需联网播放 · 点击右下角全屏效果更佳
+        </p>
+
+    </div>
+
+    <script>
+        function copyCode(btn) {
+            const code = btn.nextElementSibling.innerText;
+            navigator.clipboard.writeText(code).then(() => {
+                btn.innerText = '✅ 已复制';
+                btn.style.background = 'rgba(0,180,0,0.3)';
+                setTimeout(() => {
+                    btn.innerText = '📋 复制代码';
+                    btn.style.background = 'rgba(255,255,255,0.15)';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
